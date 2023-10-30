@@ -4,6 +4,7 @@ import logging
 import sys
 import itertools
 
+from tqdm import tqdm
 import torch
 from torch.utils.data import DataLoader, ConcatDataset
 from torch.optim.lr_scheduler import CosineAnnealingLR, MultiStepLR
@@ -113,7 +114,8 @@ def train(loader, net, criterion, optimizer, device, debug_steps=100, epoch=-1):
     running_loss = 0.0
     running_regression_loss = 0.0
     running_classification_loss = 0.0
-    for i, data in enumerate(loader):
+    pbar = tqdm(loader)
+    for i, data in (enumerate(pbar)):
         images, boxes, labels = data
         images = images.to(device)
         boxes = boxes.to(device)
@@ -133,12 +135,13 @@ def train(loader, net, criterion, optimizer, device, debug_steps=100, epoch=-1):
             avg_loss = running_loss / debug_steps
             avg_reg_loss = running_regression_loss / debug_steps
             avg_clf_loss = running_classification_loss / debug_steps
-            logging.info(
-                f"Epoch: {epoch}, Step: {i}, " +
-                f"Average Loss: {avg_loss:.4f}, " +
-                f"Average Regression Loss {avg_reg_loss:.4f}, " +
-                f"Average Classification Loss: {avg_clf_loss:.4f}"
-            )
+
+            message = (f"Epoch: {epoch}, Step: {i}, "
+                       f"Avg Loss: {avg_loss:.4f}, "
+                       f"Avg Regression Loss {avg_reg_loss:.4f}, "
+                       f"Avg Classification Loss: {avg_clf_loss:.4f}")
+
+            pbar.set_description(message)
             running_loss = 0.0
             running_regression_loss = 0.0
             running_classification_loss = 0.0
@@ -296,7 +299,6 @@ if __name__ == '__main__':
         logging.info(f"Init from pretrained ssd {args.pretrained_ssd}")
         net.init_from_pretrained_ssd(args.pretrained_ssd)
     logging.info(f'Took {timer.end("Load Model"):.2f} seconds to load the model.')
-
     net.to(DEVICE)
 
     criterion = MultiboxLoss(config.priors, iou_threshold=0.5, neg_pos_ratio=3,
