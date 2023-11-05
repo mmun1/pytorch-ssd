@@ -2,6 +2,15 @@ from pathlib import Path
 import random
 import shutil
 import xml.etree.ElementTree as ET
+import wandb
+from argparse import ArgumentParser
+
+wandb.login()
+run = wandb.init(project="pytorch-ssd", job_type="upload-dataset")
+
+
+
+
 
 random.seed(42)
 
@@ -22,17 +31,17 @@ def extract_labels_from_voc_xml(xml_file):
 
 
 def main():
+    artifact = wandb.Artifact(name=args.artifact_name, type="dataset")
     test_ratio = 0.1
     raw_data_root = Path("raw_data")
     dataset_root = Path("datasets")
 
-    dataset_name = "boards2"
-    input_images_folder = raw_data_root/ dataset_name / "images"
-    input_annotations_folder = raw_data_root/ dataset_name / "annotation"
+    input_images_folder = raw_data_root/ args.dataset_name / "images"
+    input_annotations_folder = raw_data_root/ args.dataset_name / "annotation"
 
-    image_sets_path = dataset_root / dataset_name / "ImageSets"
-    image_path = dataset_root / dataset_name / "JPEGImages"
-    annotation_path = dataset_root / dataset_name / "Annotations"
+    image_sets_path = dataset_root / args.dataset_name / "ImageSets"
+    image_path = dataset_root / args.dataset_name / "JPEGImages"
+    annotation_path = dataset_root / args.dataset_name / "Annotations"
 
     Path.mkdir(image_sets_path, parents=True, exist_ok=True)
     Path.mkdir(image_path, parents=True, exist_ok=True)
@@ -65,7 +74,14 @@ def main():
 
     # Get unique labels
     labels = set(labels)
-    save_filenames(labels, dataset_root / dataset_name / "labels.txt")
+    save_filenames(labels, dataset_root / args.dataset_name / "labels.txt")
+    artifact.add_dir(str(dataset_root / args.dataset_name))
+    run.log_artifact(artifact)
+
 
 if __name__ == "__main__":
+    parser = ArgumentParser()
+    parser.add_argument("--dataset_name", type=str, required=True)
+    parser.add_argument("--artifact_name", type=str, required=True)
+    args = parser.parse_args()
     main()
