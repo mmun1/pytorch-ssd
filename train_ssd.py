@@ -3,6 +3,7 @@ import os
 import logging
 import sys
 import itertools
+import wandb
 
 from tqdm import tqdm
 import torch
@@ -107,6 +108,19 @@ DEVICE = torch.device("cuda:0" if torch.cuda.is_available() and args.use_cuda el
 if args.use_cuda and torch.cuda.is_available():
     torch.backends.cudnn.benchmark = True
     logging.info("Use Cuda.")
+
+wandb.init(
+    # set the wandb project where this run will be logged
+    project="pytorch-ssd",
+
+    # track hyperparameters and run metadata
+    config={
+        "learning_rate": args.lr,
+        "batch_size": args.batch_size,
+        "architecture": args.net,
+        "epochs": args.num_epochs,
+    }
+)
 
 
 def train(loader, net, criterion, optimizer, device, debug_steps=100, epoch=-1):
@@ -335,8 +349,10 @@ if __name__ == '__main__':
         train_loss, train_regression_loss, train_classification_loss = train(train_loader, net, criterion, optimizer,
               device=DEVICE, debug_steps=args.debug_steps, epoch=epoch)
         scheduler.step()
+        wandb.log({"train_loss": train_loss, "train_regression_loss": train_regression_loss, "train_classification_loss": train_classification_loss})
         if epoch % args.validation_epochs == 0 or epoch == args.num_epochs - 1:
             val_loss, val_regression_loss, val_classification_loss = test(val_loader, net, criterion, DEVICE)
+            wandb.log({"val_loss": val_loss, "val_regression_loss": val_regression_loss, "val_classification_loss": val_classification_loss})
             logging.info(
                 f"Epoch: {epoch}, " +
                 f"Validation Loss: {val_loss:.4f}, " +
