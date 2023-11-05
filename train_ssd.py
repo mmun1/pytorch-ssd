@@ -5,6 +5,7 @@ import sys
 import itertools
 import wandb
 
+from pathlib import Path
 from tqdm import tqdm
 import torch
 from torch.utils.data import DataLoader, ConcatDataset
@@ -32,7 +33,7 @@ parser = argparse.ArgumentParser(
 parser.add_argument("--dataset_type", default="voc", type=str,
                     help='Specify dataset type. Currently support voc and open_images.')
 
-parser.add_argument('--datasets', nargs='+', help='Dataset directory path')
+parser.add_argument('--dataset', help='Dataset directory path')
 parser.add_argument('--validation_dataset', help='Dataset directory path')
 parser.add_argument('--balance_data', action='store_true',
                     help="Balance training data by down-sampling more frequent labels.")
@@ -102,6 +103,7 @@ parser.add_argument('--checkpoint_folder', default='models/',
 
 logging.basicConfig(stream=sys.stdout, level=logging.INFO,
                     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+DATASETS_ROOT = Path("datasets")
 args = parser.parse_args()
 DEVICE = torch.device("cuda:0" if torch.cuda.is_available() and args.use_cuda else "cpu")
 
@@ -109,7 +111,7 @@ if args.use_cuda and torch.cuda.is_available():
     torch.backends.cudnn.benchmark = True
     logging.info("Use Cuda.")
 
-wandb.init(
+run = wandb.init(
     # set the wandb project where this run will be logged
     project="pytorch-ssd",
 
@@ -230,38 +232,40 @@ if __name__ == '__main__':
     test_transform = TestTransform(config.image_size, config.image_mean, config.image_std)
 
     logging.info("Prepare training datasets.")
-    datasets = []
-    for dataset_path in args.datasets:
-        if args.dataset_type == 'voc':
-            dataset = VOCDataset(dataset_path, transform=train_transform,
-                                 target_transform=target_transform)
-            label_file = os.path.join(args.checkpoint_folder, "voc-model-labels.txt")
-            store_labels(label_file, dataset.class_names)
-            num_classes = len(dataset.class_names)
-        elif args.dataset_type == 'open_images':
-            dataset = OpenImagesDataset(dataset_path,
-                 transform=train_transform, target_transform=target_transform,
-                 dataset_type="train", balance_data=args.balance_data)
-            label_file = os.path.join(args.checkpoint_folder, "open-images-model-labels.txt")
-            store_labels(label_file, dataset.class_names)
-            logging.info(dataset)
-            num_classes = len(dataset.class_names)
+    artifact = run.use_artifact(args.dataset)
+    artifact_dir = artifact.download((DATASETS_ROOT / args.dataset.split(":")[0]))
 
-        else:
-            raise ValueError(f"Dataset type {args.dataset_type} is not supported.")
-        datasets.append(dataset)
+    if args.dataset_type == 'voc':
+        dataset = VOCDataset(artifact_dir, transform=train_transform,
+                             target_transform=target_transform)
+        label_file = os.path.join(args.checkpoint_folder, "voc-model-labels.txt")
+        store_labels(label_file, dataset.class_names)
+        num_classes = len(dataset.class_names)
+    elif args.dataset_type == 'open_images':
+        dataset = OpenImagesDataset(artifact_dir,
+             transform=train_transform, target_transform=target_transform,
+             dataset_type="train", balance_data=args.balance_data)
+        label_file = os.path.join(args.checkpoint_folder, "open-images-model-labels.txt")
+        store_labels(label_file, dataset.class_names)
+        logging.info(dataset)
+        num_classes = len(dataset.class_names)
+
+    else:
+        raise ValueError(f"Dataset type {args.dataset_type} is not supported.")
     logging.info(f"Stored labels into file {label_file}.")
-    train_dataset = ConcatDataset(datasets)
+    train_dataset = dataset
     logging.info("Train dataset size: {}".format(len(train_dataset)))
     train_loader = DataLoader(train_dataset, args.batch_size,
                               num_workers=args.num_workers,
                               shuffle=True)
     logging.info("Prepare Validation datasets.")
+    artifact = run.use_artifact(args.validation_dataset)
+    artifact_dir = artifact.download((DATASETS_ROOT / args.validation_dataset.split(":")[0]))
     if args.dataset_type == "voc":
-        val_dataset = VOCDataset(args.validation_dataset, transform=test_transform,
+        val_dataset = VOCDataset(artifact_dir, transform=test_transform,
                                  target_transform=target_transform, is_test=True)
     elif args.dataset_type == 'open_images':
-        val_dataset = OpenImagesDataset(dataset_path,
+        val_dataset = OpenImagesDataset(artifact_dir,
                                         transform=test_transform, target_transform=target_transform,
                                         dataset_type="test")
         logging.info(val_dataset)
@@ -362,3 +366,8 @@ if __name__ == '__main__':
             model_path = os.path.join(args.checkpoint_folder, f"{args.net}-Epoch-{epoch}-Loss-{val_loss}.pth")
             net.save(model_path)
             logging.info(f"Saved model {model_path}")
+            if epoch == args.num_epochs - 1:
+                trained_model_artifact = wandb.Artifact("pytorch-ssd", type="model")
+                trained_model_artifact.add_file(model_path)
+                run.log_artifact(trained_model_artifact)
+
