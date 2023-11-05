@@ -114,6 +114,9 @@ def train(loader, net, criterion, optimizer, device, debug_steps=100, epoch=-1):
     running_loss = 0.0
     running_regression_loss = 0.0
     running_classification_loss = 0.0
+    total_running_loss = 0
+    total_running_regression_loss = 0
+    total_running_classification_loss = 0
     pbar = tqdm(loader)
     for i, data in (enumerate(pbar)):
         images, boxes, labels = data
@@ -131,6 +134,10 @@ def train(loader, net, criterion, optimizer, device, debug_steps=100, epoch=-1):
         running_loss += loss.item()
         running_regression_loss += regression_loss.item()
         running_classification_loss += classification_loss.item()
+
+        total_running_loss += loss.item()
+        total_running_regression_loss += regression_loss.item()
+        total_running_classification_loss += classification_loss.item()
         if i and i % debug_steps == 0:
             avg_loss = running_loss / debug_steps
             avg_reg_loss = running_regression_loss / debug_steps
@@ -145,6 +152,8 @@ def train(loader, net, criterion, optimizer, device, debug_steps=100, epoch=-1):
             running_loss = 0.0
             running_regression_loss = 0.0
             running_classification_loss = 0.0
+
+    return total_running_loss / len(loader), total_running_regression_loss / len(loader), total_running_classification_loss / len(loader)
 
 
 def test(loader, net, criterion, device):
@@ -323,7 +332,7 @@ if __name__ == '__main__':
 
     logging.info(f"Start training from epoch {last_epoch + 1}.")
     for epoch in range(last_epoch + 1, args.num_epochs):
-        train(train_loader, net, criterion, optimizer,
+        train_loss, train_regression_loss, train_classification_loss = train(train_loader, net, criterion, optimizer,
               device=DEVICE, debug_steps=args.debug_steps, epoch=epoch)
         scheduler.step()
         if epoch % args.validation_epochs == 0 or epoch == args.num_epochs - 1:
