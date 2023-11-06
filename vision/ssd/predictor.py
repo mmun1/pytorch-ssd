@@ -22,6 +22,7 @@ class Predictor:
             self.device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
         self.net.to(self.device)
+        self.net.priors = self.net.priors.to(self.device)
         self.net.eval()
 
         self.timer = Timer()
